@@ -1,0 +1,42 @@
+{
+  "project": "Eat2smile",
+  "version": "1.5.0",
+  "stack": [
+    "React 18",
+    "TypeScript",
+    "Vite",
+    "GSAP",
+    "ScrollTrigger"
+  ],
+  "upgrade": [
+    "cinematic staged hero entrance",
+    "scroll-linked parallax layers",
+    "animated split headline",
+    "scroll reveal with image mask",
+    "staggered product cards",
+    "reading progress bar",
+    "hover depth and micro-interactions",
+    "reduced-motion support",
+    "swipeable four-slide Unsplash hero gallery with touch navigation, arrow controls and position dots",
+    "removed fake scroll progress and 01/04 placeholder strip",
+    "removed illustrated SVG food fallback; failed product photos now fall back to category-matched Unsplash photography",
+    "removed explanatory warning paragraph beneath Drop Us a Note heading"
+  ],
+  "image_strategy": "All food photography is sourced from Unsplash remote image URLs and requires internet access. If an individual menu photo fails, its image element switches to a category-matched Unsplash photo; no illustrated food fallback is included.",
+  "testing_status": "Source reviewed and updated. ZIP integrity verified after packaging. A complete dependency install, TypeScript production build and live mobile browser test have not been run in this environment.",
+  "notes": "Real contact routes, guided hero navigation, 24/7 availability, functional email composer and WhatsApp checkout handoff, rotating snack quotes.",
+  "changes": [
+    "Checkout now displays a live itemised order summary",
+    "Copy order text action",
+    "Download order summary as PNG image",
+    "Print dialog for saving order summary as PDF",
+    "WhatsApp checkout directly navigates to Eat2smile chat with prefilled order details",
+    "Added floating Instagram shortcut alongside WhatsApp"
+  ],
+  "updates": [
+    "Direct Reach us through email link in Drop Us a Note",
+    "Conditional green email handoff confirmation",
+    "Animated directional transitions for all four hero food slides",
+    "Reduced-motion accessibility retained"
+  ]
+}
