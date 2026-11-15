@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent, type FormEvent } from 'react'
-import { ArrowDown, ArrowRight, ArrowUpRight, Check, Clock3, Instagram, Mail, MapPin, Menu, Minus, Phone, Plus, Search, ShoppingBag, Sparkles, Trash2, X, MessageCircle, Utensils, Truck, Download, Printer } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, Clock3, Heart, Instagram, Mail, MapPin, Menu, Minus, Phone, Plus, Search, ShoppingBag, Sparkles, Trash2, X, MessageCircle, Utensils, Truck, Download, Printer, User, LogOut, ClipboardList } from 'lucide-react'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { categories, formatNaira, products, WHATSAPP_NUMBER, type Product } from './data'
@@ -7,6 +7,14 @@ import { categories, formatNaira, products, WHATSAPP_NUMBER, type Product } from
 gsap.registerPlugin(ScrollTrigger)
 
 type CartItem = { product: Product; quantity: number }
+type CartToast = { id: number; name: string }
+const ACCENT_COLOURS = [
+  { colour: '#ff6b00', foreground: '#ffffff' },
+  { colour: '#E63946', foreground: '#ffffff' },
+  { colour: '#FF8C00', foreground: '#ffffff' },
+  { colour: '#FFC300', foreground: '#1c1c1c' },
+  { colour: '#6F1D1D', foreground: '#ffffff' }
+]
 const CONTACT_EMAIL = 'davidajulo4@gmail.com'
 const snackQuotes = [
   'A good snack is never just a snack. It is the little plot twist in a long day, the crispy pause between responsibilities, and the tiny celebration you did not know you needed. One bite can turn the mood around, but a box to share can turn an ordinary evening into a proper memory.',
@@ -15,7 +23,16 @@ const snackQuotes = [
   'A burger in one hand and a milkshake in the other is a very convincing argument for slowing down. Let the world wait a minute. Enjoy the warm bite, the cool sip, the familiar flavour, and the small joy of having exactly what you were craving. You can return to being productive after the last crumb.'
 ]
 const readCart = (): CartItem[] => {
-  try { return JSON.parse(localStorage.getItem('eat2smile-cart') || '[]') } catch { return [] }
+  try {
+    const value = JSON.parse(localStorage.getItem('eat2smile-cart') || '[]')
+    return Array.isArray(value) ? value.filter((item: CartItem) => item?.product?.id && Number.isFinite(item.quantity) && item.quantity > 0) : []
+  } catch { return [] }
+}
+const readFavourites = (): string[] => {
+  try {
+    const value = JSON.parse(localStorage.getItem('eat2smile-favourites') || '[]')
+    return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string' && /^[a-z0-9-]{2,80}$/.test(id)))] : []
+  } catch { return [] }
 }
 
 const unsplashFallbacks: Record<string, string> = {
@@ -43,6 +60,11 @@ function AtSignIcon() { return <span className="at-sign-icon" aria-hidden="true"
 
 function App() {
   const [cart, setCart] = useState<CartItem[]>(readCart)
+  const [menuProducts, setMenuProducts] = useState<Product[]>(products)
+  const [favourites, setFavourites] = useState<string[]>(readFavourites)
+  const [toast, setToast] = useState<CartToast | null>(null)
+  const [floatingCartVisible, setFloatingCartVisible] = useState(() => typeof window !== 'undefined' && window.scrollY > 420)
+  const toastTimer = useRef<number | undefined>(undefined)
   const [activeCategory, setActiveCategory] = useState('All')
   const [search, setSearch] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
@@ -53,7 +75,20 @@ function App() {
   const [customer, setCustomer] = useState({name:'', phone:'', address:'', instructions:''})
   const [formError, setFormError] = useState('')
   const [copied, setCopied] = useState(false)
-  const [orderReference] = useState(() => `ES-${Date.now().toString(36).toUpperCase()}`)
+  const [orderReference] = useState(() => `DRAFT-${Date.now().toString(36).toUpperCase()}`)
+  const [signedIn, setSignedIn] = useState<{id:string;email:string;name:string;phone:string}|null>(null)
+  const [orderAttemptKey, setOrderAttemptKey] = useState(()=>{try{const saved=sessionStorage.getItem('eat2smile-order-attempt');return saved&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(saved)?saved:crypto.randomUUID()}catch{return crypto.randomUUID()}})
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<'login'|'register'>('login')
+  const [authForm, setAuthForm] = useState({name:'',email:'',phone:'',password:''})
+  const [authError, setAuthError] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+  const [orders, setOrders] = useState<Array<{id:string;reference:string;status:string;orderType:string;subtotal:number;total:number;createdAt:string}>>([])
+  const [orderDetail, setOrderDetail] = useState<any>(null)
+  const [submittingOrder, setSubmittingOrder] = useState(false)
+  const [orderSuccess, setOrderSuccess] = useState<{reference:string;status:string;total:number}|null>(null)
+  const [trackForm, setTrackForm] = useState({reference:'',phone:''})
+  const [trackedOrder, setTrackedOrder] = useState<any>(null)
   const [contactSent, setContactSent] = useState(false)
   const [contact, setContact] = useState({name:'', email:'', message:''})
   const [quoteIndex, setQuoteIndex] = useState(0)
@@ -70,6 +105,33 @@ function App() {
   const menuRef = useRef<HTMLElement>(null)
 
   useEffect(() => { localStorage.setItem('eat2smile-cart', JSON.stringify(cart)) }, [cart])
+  useEffect(() => { sessionStorage.setItem('eat2smile-order-attempt',orderAttemptKey) }, [orderAttemptKey])
+  useEffect(() => { localStorage.setItem('eat2smile-favourites', JSON.stringify(favourites)) }, [favourites])
+  useEffect(() => { fetch('/api/auth/me').then(r=>r.ok?r.json():null).then(data=>{if(data?.customer){setSignedIn(data.customer);setCustomer(c=>({...c,name:data.customer.name,phone:data.customer.phone}))}}).catch(()=>{}) }, [])
+  useEffect(() => { if(!orderDetail?.order?.id)return; const timer=window.setInterval(()=>{fetch(`/api/orders/${orderDetail.order.id}`).then(r=>r.ok?r.json():null).then(data=>{if(data)setOrderDetail(data)}).catch(()=>{})},15000); return ()=>window.clearInterval(timer) }, [orderDetail?.order?.id])
+  useEffect(() => { if(!accountOpen||!trackedOrder?.order?.reference)return; const timer=window.setInterval(()=>{fetch('/api/track',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(trackForm)}).then(r=>r.ok?r.json():null).then(data=>{if(data)setTrackedOrder(data)}).catch(()=>{})},15000); return ()=>window.clearInterval(timer) }, [accountOpen,trackedOrder?.order?.reference,trackForm.reference,trackForm.phone])
+  useEffect(() => { fetch('/api/menu').then(r=>r.ok?r.json():null).then(data=>{if(Array.isArray(data?.items)&&data.items.length)setMenuProducts(data.items.map((item:any)=>({...item,price:Number(item.price)})))}).catch(()=>{}) }, [])
+  useEffect(() => {
+    let colourIndex = 0
+    const root = document.documentElement
+    root.style.setProperty('--orange', ACCENT_COLOURS[colourIndex].colour)
+    root.style.setProperty('--accent-foreground', ACCENT_COLOURS[colourIndex].foreground)
+    root.dataset.accentIndex = String(colourIndex)
+    const timer = window.setInterval(() => {
+      colourIndex = (colourIndex + 1) % ACCENT_COLOURS.length
+      root.style.setProperty('--orange', ACCENT_COLOURS[colourIndex].colour)
+      root.style.setProperty('--accent-foreground', ACCENT_COLOURS[colourIndex].foreground)
+      root.dataset.accentIndex = String(colourIndex)
+    }, 6000)
+    return () => window.clearInterval(timer)
+  }, [])
+  useEffect(() => {
+    const updateVisibility = () => setFloatingCartVisible(window.scrollY > 420)
+    updateVisibility()
+    window.addEventListener('scroll', updateVisibility, { passive: true })
+    return () => window.removeEventListener('scroll', updateVisibility)
+  }, [])
+  useEffect(() => () => { if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current) }, [])
   useEffect(() => {
     const ctx = gsap.context(() => {
       const intro = introRef.current
@@ -149,35 +211,62 @@ function App() {
     return () => { observer.disconnect(); window.clearInterval(timer) }
   }, [])
 
-  const filtered = useMemo(() => products.filter(p => (activeCategory==='All' || p.category===activeCategory) && (p.name.toLowerCase().includes(search.toLowerCase()) || p.description.toLowerCase().includes(search.toLowerCase()))), [activeCategory, search])
+  const filtered = useMemo(() => menuProducts.filter(p => (activeCategory === 'All' || (activeCategory === 'Favourites' ? favourites.includes(p.id) : p.category === activeCategory)) && (p.name.toLowerCase().includes(search.toLowerCase()) || p.description.toLowerCase().includes(search.toLowerCase()))), [activeCategory, search, favourites, menuProducts])
   const count = cart.reduce((sum,item)=>sum+item.quantity,0)
   const subtotal = cart.reduce((sum,item)=>sum+item.product.price*item.quantity,0)
 
-  const add = (product:Product) => setCart(old => {
-    const found = old.find(i=>i.product.id===product.id)
-    return found ? old.map(i=>i.product.id===product.id?{...i,quantity:i.quantity+1}:i) : [...old,{product,quantity:1}]
-  })
-  const changeQty = (id:string, delta:number) => setCart(old => old.map(i=>i.product.id===id?{...i,quantity:i.quantity+delta}:i).filter(i=>i.quantity>0))
-  const remove = (id:string) => setCart(old=>old.filter(i=>i.product.id!==id))
+  const add = (product:Product) => {
+    rotateOrderAttempt()
+    setCart(old => {
+      const found = old.find(i=>i.product.id===product.id)
+      return found ? old.map(i=>i.product.id===product.id?{...i,quantity:i.quantity+1}:i) : [...old,{product,quantity:1}]
+    })
+    setToast({ id: Date.now(), name: product.name })
+    if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 3000)
+  }
+  const toggleFavourite = (productId: string) => setFavourites(current => current.includes(productId) ? current.filter(id => id !== productId) : [...current, productId])
+  const changeQty = (id:string, delta:number) => { rotateOrderAttempt(); setCart(old => old.map(i=>i.product.id===id?{...i,quantity:i.quantity+delta}:i).filter(i=>i.quantity>0)) }
+  const remove = (id:string) => {rotateOrderAttempt();setCart(old=>old.filter(i=>i.product.id!==id))}
   const scrollTo = (id:string) => { setMobileOpen(false); document.getElementById(id)?.scrollIntoView({behavior:'smooth'}) }
+  const rotateOrderAttempt = () => {const key=crypto.randomUUID();setOrderAttemptKey(key);try{sessionStorage.setItem('eat2smile-order-attempt',key)}catch{}}
+  const updateCheckoutCustomer = (field:keyof typeof customer,value:string) => {setCustomer(current=>({...current,[field]:value}));rotateOrderAttempt()}
 
   const orderText = () => {
     const reference = orderReference
     const lines = cart.map(i=>`• ${i.product.name} x${i.quantity} — ${formatNaira(i.product.price*i.quantity)}`).join('\n')
-    return `EAT2SMILE ORDER REQUEST\nReference: ${reference}\n\n${lines}\n\nSubtotal: ${formatNaira(subtotal)}\nOrder type: ${orderType}\nCustomer: ${customer.name}\nCustomer phone: ${customer.phone}${orderType==='Delivery'?`\nDelivery address: ${customer.address}`:''}${customer.instructions.trim()?`\nOrder instructions: ${customer.instructions.trim()}`:''}\n\nPlease confirm item availability, delivery fee (if applicable), estimated preparation/delivery time and payment instructions. This order is not confirmed until Eat2smile replies. Thank you!`
+    return `EAT2SMILE ORDER REQUEST\nDraft reference: ${reference} (server reference is assigned after successful submission)\n\n${lines}\n\nSubtotal: ${formatNaira(subtotal)}\nOrder type: ${orderType}\nCustomer: ${customer.name}\nCustomer phone: ${customer.phone}${orderType==='Delivery'?`\nDelivery address: ${customer.address}`:''}${customer.instructions.trim()?`\nOrder instructions: ${customer.instructions.trim()}`:''}\n\nPlease confirm item availability, delivery fee (if applicable), estimated preparation/delivery time and payment instructions. This order request is not confirmed until the restaurant accepts it. Thank you!`
   }
-  const submitOrder = () => {
+  const apiRequest = async (url:string, options:RequestInit={}) => {
+    const response = await fetch(url,{...options,credentials:'same-origin',headers:{...(options.body instanceof FormData?{}:{'content-type':'application/json'}),...(options.headers||{})}})
+    const data = await response.json().catch(()=>({error:'Unexpected server response.'}))
+    if(!response.ok) throw new Error(data.error || 'The request could not be completed.')
+    return data
+  }
+  const loadOrders = async () => { const data=await apiRequest('/api/orders'); setOrders(data.orders||[]) }
+  const submitAuth = async (event:FormEvent<HTMLFormElement>) => {
+    event.preventDefault();setAuthError('');setAuthBusy(true)
+    try { const data=await apiRequest(`/api/auth/${authMode}`,{method:'POST',body:JSON.stringify(authMode==='register'?authForm:{email:authForm.email,password:authForm.password})});setSignedIn(data.customer);setCustomer(c=>({...c,name:data.customer.name,phone:data.customer.phone}));setAccountOpen(false);setAuthForm({name:'',email:'',phone:'',password:''});await loadOrders() }
+    catch(error){setAuthError(error instanceof Error?error.message:'Authentication failed.')} finally{setAuthBusy(false)}
+  }
+  const signOut = async () => { try{await apiRequest('/api/auth/logout',{method:'POST',body:'{}'})}catch{} setSignedIn(null);setOrders([]);setOrderDetail(null);setAccountOpen(false) }
+  const submitOrder = async () => {
     if (!cart.length) { setFormError('Your cart is empty. Add something delicious before checkout.'); return }
-    if (!customer.name.trim() || !customer.phone.trim() || (orderType==='Delivery' && !customer.address.trim())) {
-      setFormError('Please complete your name, active phone number and delivery address where required.'); return
-    }
+    if (!customer.name.trim() || !customer.phone.trim() || (orderType==='Delivery' && !customer.address.trim())) { setFormError('Please complete your name, active phone number and delivery address where required.'); return }
     const digits = customer.phone.replace(/\D/g, '')
     if (digits.length < 10 || digits.length > 15) { setFormError('Enter a valid phone number with at least 10 digits.'); return }
     setFormError('')
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(orderText())}`
-    // Navigate directly so mobile browsers hand off to WhatsApp with the full order prefilled.
-    window.location.href = url
+    if(!signedIn){setAuthMode('login');setAuthError('Sign in or create an account to securely save and track your order.');setAccountOpen(true);return}
+    setSubmittingOrder(true)
+    try {
+      await apiRequest('/api/profile',{method:'PATCH',body:JSON.stringify({name:customer.name,phone:customer.phone})})
+      const data=await apiRequest('/api/orders',{method:'POST',body:JSON.stringify({items:cart.map(i=>({id:i.product.id,quantity:i.quantity})),idempotencyKey:orderAttemptKey,orderType,address:orderType==='Delivery'?customer.address:'',instructions:customer.instructions})})
+      setOrderSuccess({reference:data.order.reference,status:data.order.status,total:Number(data.order.total)});sessionStorage.removeItem('eat2smile-order-attempt');rotateOrderAttempt();setCart([]);setCheckoutOpen(false);setCartOpen(false);await loadOrders()
+    } catch(error) { const message=error instanceof Error?error.message:'Order could not be saved.';setFormError(message);if(message.toLowerCase().includes('sign in')){setAccountOpen(true);setAuthMode('login')} } finally {setSubmittingOrder(false)}
   }
+  const openOrder = async (orderId:string) => {try{setOrderDetail(await apiRequest(`/api/orders/${orderId}`))}catch(error){setAuthError(error instanceof Error?error.message:'Unable to load order.')}}
+  const repeatOrder = (detail:any) => {const next=(detail.items||[]).map((line:any)=>{const product=menuProducts.find(p=>p.id===line.menuItemId||p.name===line.name);return product?{product,quantity:line.quantity}:null}).filter(Boolean) as CartItem[];if(!next.length){setAuthError('The original items are no longer in the current menu.');return}rotateOrderAttempt();setCart(next);setOrderType(detail.order.orderType);setCustomer(c=>({...c,name:signedIn?.name||c.name,phone:signedIn?.phone||c.phone,address:detail.order.address||c.address,instructions:detail.order.instructions||''}));setOrderDetail(null);setAccountOpen(false);setCheckoutOpen(true)}
+  const trackOrder = async (event:FormEvent<HTMLFormElement>) => {event.preventDefault();setAuthError('');try{setTrackedOrder(await apiRequest('/api/track',{method:'POST',body:JSON.stringify(trackForm)}))}catch(error){setAuthError(error instanceof Error?error.message:'Unable to track this order.')}}
   const sendContactMessage = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const subject = encodeURIComponent(`Eat2smile website enquiry from ${contact.name}`)
@@ -193,12 +282,12 @@ function App() {
     const canvas = document.createElement('canvas')
     const width = 1000, padding = 76, lineHeight = 42
     const lines = [
-      'EAT2SMILE  |  ORDER SUMMARY', `Reference: ${orderReference}`, `Date: ${new Date().toLocaleString('en-NG')}`, '',
+      'EAT2SMILE  |  ORDER SUMMARY', `Draft reference: ${orderReference}`, `Date: ${new Date().toLocaleString('en-NG')}`, '',
       ...cart.map(item => `${item.product.name}  x${item.quantity}     ${formatNaira(item.product.price * item.quantity)}`), '',
       `Subtotal: ${formatNaira(subtotal)}`, `Order type: ${orderType}`, `Customer: ${customer.name || 'Not provided'}`,
       `Phone: ${customer.phone || 'Not provided'}`, ...(orderType === 'Delivery' ? [`Address: ${customer.address || 'Not provided'}`] : []),
       ...(customer.instructions.trim() ? [`Note: ${customer.instructions.trim()}`] : []), '',
-      'This is an order request, not a confirmed order.', 'Eat2smile will confirm availability, delivery fee and payment details on WhatsApp.'
+      'This is an order request. It is confirmed when the restaurant accepts it.', 'Eat2smile will confirm availability, delivery fee and payment details.'
     ]
     canvas.width = width; canvas.height = padding * 2 + lines.length * lineHeight + 70
     const ctx = canvas.getContext('2d')
@@ -230,7 +319,7 @@ function App() {
     const rows = cart.map(item => `<tr><td>${escapeHtml(item.product.name)}</td><td>${item.quantity}</td><td>${formatNaira(item.product.price * item.quantity)}</td></tr>`).join('')
     const popup = window.open('', '_blank')
     if (!popup) { setFormError('Allow pop-ups to print or save your order as a PDF.'); return }
-    popup.document.write(`<!doctype html><html><head><title>Eat2smile ${orderReference}</title><style>body{font:15px Arial,sans-serif;color:#1c1c1c;padding:36px;max-width:760px;margin:auto}h1{color:#ff6b00}table{width:100%;border-collapse:collapse;margin:24px 0}td,th{text-align:left;padding:12px;border-bottom:1px solid #eee} .total{font-size:22px;font-weight:bold;color:#ff6b00}.muted{color:#777;line-height:1.6}@media print{button{display:none}}</style></head><body><h1>EAT2SMILE</h1><h2>Order summary</h2><p>Reference: ${orderReference}<br>Date: ${new Date().toLocaleString('en-NG')}</p><table><thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Subtotal: ${formatNaira(subtotal)}</p><p>Order type: ${orderType}<br>Customer: ${escapeHtml(customer.name || 'Not provided')}<br>Phone: ${escapeHtml(customer.phone || 'Not provided')}${orderType === 'Delivery' ? `<br>Address: ${escapeHtml(customer.address || 'Not provided')}` : ''}${customer.instructions.trim() ? `<br>Instructions: ${escapeHtml(customer.instructions.trim())}` : ''}</p><p class="muted">This is an order request, not a confirmed order. Eat2smile will confirm availability, delivery fee and payment details on WhatsApp.</p><button onclick="window.print()">Print / Save as PDF</button><script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`)
+    popup.document.write(`<!doctype html><html><head><title>Eat2smile ${orderReference}</title><style>body{font:15px Arial,sans-serif;color:#1c1c1c;padding:36px;max-width:760px;margin:auto}h1{color:#ff6b00}table{width:100%;border-collapse:collapse;margin:24px 0}td,th{text-align:left;padding:12px;border-bottom:1px solid #eee} .total{font-size:22px;font-weight:bold;color:#ff6b00}.muted{color:#777;line-height:1.6}@media print{button{display:none}}</style></head><body><h1>EAT2SMILE</h1><h2>Order summary</h2><p>Draft reference: ${orderReference}<br>Date: ${new Date().toLocaleString('en-NG')}</p><table><thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table><p class="total">Subtotal: ${formatNaira(subtotal)}</p><p>Order type: ${orderType}<br>Customer: ${escapeHtml(customer.name || 'Not provided')}<br>Phone: ${escapeHtml(customer.phone || 'Not provided')}${orderType === 'Delivery' ? `<br>Address: ${escapeHtml(customer.address || 'Not provided')}` : ''}${customer.instructions.trim() ? `<br>Instructions: ${escapeHtml(customer.instructions.trim())}` : ''}</p><p class="muted">This is an order request. It is confirmed when the restaurant accepts it. Eat2smile will confirm availability, delivery fee and payment details.</p><button onclick="window.print()">Print / Save as PDF</button><script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`)
     popup.document.close()
   }
 
@@ -240,7 +329,7 @@ function App() {
     <header className="header">
       <a className="brand" href="#home" onClick={e=>{e.preventDefault();scrollTo('home')}}><span className="brand-icon"><Utensils size={19}/></span><span>EAT<span className="brand-two">2</span>SMILE<small>EVERY BITE, A SMILE.</small></span></a>
       <nav className="desktop-nav"><a href="#home">Home</a><a href="#menu">Our menu</a><a href="#story">Our story</a><a href="#contact">Find us</a></nav>
-      <div className="header-actions"><button className="search-trigger" onClick={()=>scrollTo('menu')} aria-label="Search menu"><Search size={19}/></button><button className="cart-trigger" onClick={()=>setCartOpen(true)}><ShoppingBag size={17}/> <span>My order</span><b>{count}</b></button><button className="mobile-menu-button" onClick={()=>setMobileOpen(!mobileOpen)} aria-label="Toggle navigation">{mobileOpen?<X/>:<Menu/>}</button></div>
+      <div className="header-actions"><button className="search-trigger" onClick={()=>scrollTo('menu')} aria-label="Search menu"><Search size={19}/></button><button className="account-trigger" onClick={()=>{setAccountOpen(true);setAuthError('');if(signedIn)loadOrders().catch(()=>{})}}><User size={17}/><span>{signedIn?'Account':'Sign in'}</span></button><button className="cart-trigger" onClick={()=>setCartOpen(true)}><ShoppingBag size={17}/> <span>My order</span><b>{count}</b></button><button className="mobile-menu-button" onClick={()=>setMobileOpen(!mobileOpen)} aria-label="Toggle navigation">{mobileOpen?<X/>:<Menu/>}</button></div>
     </header>
     {mobileOpen && <div className="mobile-nav"><a onClick={()=>scrollTo('home')}>Home</a><a onClick={()=>scrollTo('menu')}>Our menu</a><a onClick={()=>scrollTo('story')}>Our story</a><a onClick={()=>scrollTo('contact')}>Find us</a></div>}
 
@@ -282,15 +371,16 @@ function App() {
 
       <section className="menu-section" id="menu" ref={menuRef}>
         <div className="section-heading" data-reveal><div><div className="eyebrow"><span className="eyebrow-line"></span> THE GOOD STUFF</div><h2>MEET YOUR<br/><em>NEW CRAVING.</em></h2></div><p>Big bites, bold flavours and something for every kind of hungry. Go on, find your favourite.</p></div>
-        <div className="menu-toolbar"><div className="category-tabs">{categories.map(cat=><button key={cat} className={activeCategory===cat?'active':''} onClick={()=>setActiveCategory(cat)}>{cat}</button>)}</div><label className="menu-search"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Find a craving..." /></label></div>
+        <div className="menu-toolbar"><div className="category-tabs">{['All', 'Favourites', ...categories.filter(cat => cat !== 'All')].map(cat=><button key={cat} className={activeCategory===cat?'active':''} onClick={()=>setActiveCategory(cat)}>{cat === 'Favourites' ? <> <Heart size={12} fill={activeCategory === 'Favourites' ? 'currentColor' : 'none'}/> Favourites <span className="favourite-tab-count">{favourites.length}</span></> : cat}</button>)}</div><label className="menu-search"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Find a craving..." /></label></div>
         <div className="product-grid" key={activeCategory+search}>
           {filtered.map((p,i)=><article className="product-card" key={p.id} style={{animationDelay:`${Math.min(i,8)*45}ms`}}>
+            <button className={`product-favourite ${favourites.includes(p.id) ? 'is-favourite' : ''}`} onClick={()=>toggleFavourite(p.id)} aria-label={`${favourites.includes(p.id) ? 'Remove' : 'Add'} ${p.name} ${favourites.includes(p.id) ? 'from' : 'to'} favourites`} aria-pressed={favourites.includes(p.id)} title={favourites.includes(p.id) ? 'Remove from favourites' : 'Save to favourites'}><Heart size={17} fill={favourites.includes(p.id) ? 'currentColor' : 'none'}/><span>{favourites.includes(p.id) ? 1 : 0}</span></button>
             <button className="product-image" onClick={()=>setSelected(p)} aria-label={`View ${p.name}`}><img src={p.image} alt={p.name} loading="lazy" onError={e=>fallbackImage(e,p.category)}/>{p.tag&&<span className="product-tag">{p.tag}</span>}<span className="quick-view">QUICK LOOK <ArrowUpRight size={14}/></span></button>
             <div className="product-info"><div><span className="product-category">{p.category}</span><h3>{p.name}</h3></div><strong>{formatNaira(p.price)}</strong></div>
             <div className="product-bottom"><span>Made to make you smile</span><button onClick={()=>add(p)} aria-label={`Add ${p.name} to cart`}><Plus size={18}/></button></div>
           </article>)}
         </div>
-        {filtered.length===0&&<div className="empty-search">No cravings found. Try another search. 🍟</div>}
+        {filtered.length===0&&<div className="empty-search">{activeCategory === 'Favourites' ? <>No favourites saved yet. Tap the <Heart size={15}/> on any meal to keep it here. 🍟</> : 'No cravings found. Try another search. 🍟'}</div>}
       </section>
 
       <section className="promo-section">
@@ -323,13 +413,18 @@ function App() {
 
     <footer className="footer"><div className="footer-top"><a className="brand brand-footer" href="#home"><span className="brand-icon"><Utensils size={19}/></span><span>EAT<span className="brand-two">2</span>SMILE<small>EVERY BITE, A SMILE.</small></span></a><p>Good food. Good mood.<br/>Every bite comes with a smile.</p><a className="footer-order" href="#menu">LET'S EAT <ArrowUpRight size={17}/></a></div><div className="footer-bottom"><span>© 2026 EAT2SMILE. MADE WITH A LITTLE EXTRA JOY.</span><span>ABUJA, NIGERIA</span><a href="#home">BACK TO TOP ↑</a></div><p className="portfolio-note">Developed by <strong>KoleDev</strong>.</p></footer>
 
+    {toast && <div key={toast.id} className="cart-snackbar" role="status" aria-live="polite"><span className="snackbar-check"><Check size={16}/></span><span className="snackbar-message"><strong>{toast.name}</strong><small>Added to your cart</small></span><button type="button" onClick={()=>{setToast(null);if(toastTimer.current!==undefined)window.clearTimeout(toastTimer.current);setCartOpen(true)}}>View Cart <ArrowUpRight size={14}/></button><button className="snackbar-close" type="button" aria-label="Dismiss notification" onClick={()=>setToast(null)}><X size={14}/></button></div>}
+    <button type="button" className={`floating-cart ${floatingCartVisible && count > 0 ? 'is-visible' : ''}`} onClick={()=>setCartOpen(true)} aria-label={`Open cart with ${count} items, total ${formatNaira(subtotal)}`} aria-hidden={!(floatingCartVisible && count > 0)} tabIndex={floatingCartVisible && count > 0 ? 0 : -1}><span className="floating-cart-icon"><ShoppingBag size={19}/><b>{count}</b></span><span className="floating-cart-copy"><small>{count} {count === 1 ? 'ITEM' : 'ITEMS'}</small><strong>{formatNaira(subtotal)}</strong></span><ArrowUpRight size={16}/></button>
     <div className="social-floats"><a className="instagram-float" href="https://www.instagram.com/koled_45/" target="_blank" rel="noreferrer" aria-label="Visit Eat2smile on Instagram"><Instagram size={21}/></a><a className="whatsapp-float" href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Hello Eat2smile! I have a question about your menu.')}`} target="_blank" rel="noreferrer" aria-label="Chat with Eat2smile on WhatsApp"><MessageCircle size={22}/></a></div>
 
-    {cartOpen&&<div className="drawer-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setCartOpen(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">YOUR HAPPY PLACE</span><h2>Your order <span>({count})</span></h2></div><button className="icon-button" onClick={()=>setCartOpen(false)} aria-label="Close cart"><X/></button></div>{cart.length===0?<div className="cart-empty"><span>🍔</span><h3>Your cart is feeling lonely.</h3><p>Give it something delicious to carry.</p><button className="button button-orange" onClick={()=>{setCartOpen(false);scrollTo('menu')}}>Explore the menu <ArrowRight size={16}/></button></div>:<><div className="cart-items">{cart.map(item=><div className="cart-item" key={item.product.id}><img src={item.product.image} alt="" onError={fallbackImage}/><div className="cart-item-info"><b>{item.product.name}</b><small>{formatNaira(item.product.price)}</small><div className="qty-control"><button onClick={()=>changeQty(item.product.id,-1)} aria-label="Decrease quantity"><Minus size={13}/></button><span>{item.quantity}</span><button onClick={()=>changeQty(item.product.id,1)} aria-label="Increase quantity"><Plus size={13}/></button></div></div><strong>{formatNaira(item.product.price*item.quantity)}</strong><button className="remove-item" onClick={()=>remove(item.product.id)} aria-label="Remove item"><Trash2 size={15}/></button></div>)}</div><div className="cart-summary"><div><span>Subtotal</span><strong>{formatNaira(subtotal)}</strong></div><small>Delivery fee, if applicable, will be confirmed on WhatsApp.</small><button className="button button-orange checkout-button" onClick={()=>{setCartOpen(false);setCheckoutOpen(true)}}>Continue to checkout <ArrowRight size={17}/></button></div></>}</aside></div>}
+    {cartOpen&&<div className="drawer-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setCartOpen(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">YOUR HAPPY PLACE</span><h2>Your order <span>({count})</span></h2></div><button className="icon-button" onClick={()=>setCartOpen(false)} aria-label="Close cart"><X/></button></div>{cart.length===0?<div className="cart-empty"><span>🍔</span><h3>Your cart is feeling lonely.</h3><p>Give it something delicious to carry.</p><button className="button button-orange" onClick={()=>{setCartOpen(false);scrollTo('menu')}}>Explore the menu <ArrowRight size={16}/></button></div>:<><div className="cart-items">{cart.map(item=><div className="cart-item" key={item.product.id}><img src={item.product.image} alt="" onError={fallbackImage}/><div className="cart-item-info"><b>{item.product.name}</b><small>{formatNaira(item.product.price)}</small><div className="qty-control"><button onClick={()=>changeQty(item.product.id,-1)} aria-label="Decrease quantity"><Minus size={13}/></button><span>{item.quantity}</span><button onClick={()=>changeQty(item.product.id,1)} aria-label="Increase quantity"><Plus size={13}/></button></div></div><strong>{formatNaira(item.product.price*item.quantity)}</strong><button className="remove-item" onClick={()=>remove(item.product.id)} aria-label="Remove item"><Trash2 size={15}/></button></div>)}</div><div className="cart-summary"><div><span>Subtotal</span><strong>{formatNaira(subtotal)}</strong></div><small>Delivery fee, if applicable, will be confirmed by the restaurant.</small><button className="button button-orange checkout-button" onClick={()=>{setCartOpen(false);setCheckoutOpen(true)}}>Continue to checkout <ArrowRight size={17}/></button></div></>}</aside></div>}
 
-    {selected&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setSelected(null)}}><div className="product-modal"><button className="modal-close" onClick={()=>setSelected(null)} aria-label="Close"><X/></button><img src={selected.image} alt={selected.name} onError={fallbackImage}/><div className="modal-copy"><span className="product-category">{selected.category}</span><h2>{selected.name}</h2><p>{selected.description}</p><div className="modal-price">{formatNaira(selected.price)}</div><button className="button button-orange" onClick={()=>{add(selected);setSelected(null);setCartOpen(true)}}>Add to my order <Plus size={17}/></button></div></div></div>}
+    {selected&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setSelected(null)}}><div className="product-modal"><button className={`modal-favourite ${favourites.includes(selected.id) ? 'is-favourite' : ''}`} onClick={()=>toggleFavourite(selected.id)} aria-label={favourites.includes(selected.id) ? 'Remove from favourites' : 'Add to favourites'} aria-pressed={favourites.includes(selected.id)}><Heart size={18} fill={favourites.includes(selected.id) ? 'currentColor' : 'none'}/></button><button className="modal-close" onClick={()=>setSelected(null)} aria-label="Close"><X/></button><img src={selected.image} alt={selected.name} onError={fallbackImage}/><div className="modal-copy"><span className="product-category">{selected.category}</span><h2>{selected.name}</h2><p>{selected.description}</p><div className="modal-price">{formatNaira(selected.price)}</div><button className="button button-orange" onClick={()=>{add(selected);setSelected(null);setCartOpen(true)}}>Add to my order <Plus size={17}/></button></div></div></div>}
 
-    {checkoutOpen&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckoutOpen(false)}}><div className="checkout-modal"><button className="modal-close" onClick={()=>setCheckoutOpen(false)} aria-label="Close"><X/></button><span className="eyebrow">ALMOST THERE</span><h2>Let's make it <em>delicious.</em></h2><p className="checkout-intro">Your order summary will open in WhatsApp so the team can confirm it with you.</p><div className="checkout-total"><span>{count} item(s)</span><strong>{formatNaira(subtotal)}</strong></div><div className="checkout-order-preview"><b>YOUR ORDER SUMMARY</b>{cart.map(item=><div key={item.product.id}><span>{item.product.name} × {item.quantity}</span><strong>{formatNaira(item.product.price * item.quantity)}</strong></div>)}<div className="preview-subtotal"><span>Subtotal</span><strong>{formatNaira(subtotal)}</strong></div></div><div className="order-type"><button className={orderType==='Delivery'?'selected':''} onClick={()=>setOrderType('Delivery')}><Truck size={18}/> Delivery</button><button className={orderType==='Pickup'?'selected':''} onClick={()=>setOrderType('Pickup')}><ShoppingBag size={18}/> Pickup</button></div><label>Your name<input value={customer.name} onChange={e=>setCustomer({...customer,name:e.target.value})} placeholder="e.g. Alex Okafor"/></label><label>Phone number<input value={customer.phone} onChange={e=>setCustomer({...customer,phone:e.target.value})} placeholder="Your active phone number" type="tel"/></label>{orderType==='Delivery'&&<label>Delivery address<textarea rows={2} value={customer.address} onChange={e=>setCustomer({...customer,address:e.target.value})} placeholder="House number, street, area, city"/></label>}<label>Special instructions (optional)<textarea rows={2} value={customer.instructions} onChange={e=>setCustomer({...customer,instructions:e.target.value})} placeholder="Landmark, preferred contact, food notes..."/></label>{formError&&<p className="form-error">{formError}</p>}<button className="button button-orange checkout-button" onClick={submitOrder}>Send order to Eat2smile <ArrowUpRight size={17}/></button><div className="order-tools"><button className="copy-order" onClick={copyOrder}>{copied?<><Check size={15}/> Summary copied</>: 'Copy order text'}</button><button className="copy-order" onClick={downloadOrderImage}><Download size={14}/> Download image</button><button className="copy-order" onClick={printOrderPdf}><Printer size={14}/> Save as PDF</button></div><small className="checkout-disclaimer">Your order is sent to Eat2smile on WhatsApp. Tap Send in WhatsApp, then wait for the team to confirm availability, delivery fee and payment instructions. No payment is collected on this website.</small></div></div>}
+    {accountOpen&&<div className="modal-backdrop account-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setAccountOpen(false)}}><section className="account-modal"><button className="modal-close" onClick={()=>setAccountOpen(false)} aria-label="Close account"><X/></button>{signedIn?<><span className="eyebrow">YOUR EAT2SMILE ACCOUNT</span><h2>Hello, <em>{signedIn.name.split(' ')[0]}.</em></h2><p className="account-muted">{signedIn.email}</p>{authError&&<p className="form-error">{authError}</p>}<div className="account-heading"><h3><ClipboardList size={18}/> Your orders</h3><button className="copy-order" onClick={()=>loadOrders().catch(e=>setAuthError(e.message))}>Refresh</button></div>{orders.length===0?<p className="account-muted">Your order history will appear here after your first order.</p>:<div className="account-orders">{orders.map(order=><button key={order.id} className="account-order-row" onClick={()=>openOrder(order.id)}><span><b>{order.reference}</b><small>{new Date(order.createdAt).toLocaleString('en-NG')} · {order.orderType}</small></span><span><b>{order.status}</b><small>{formatNaira(order.total)}</small></span></button>)}</div>}<form className="track-form" onSubmit={trackOrder}><h3>Track an order</h3><input required value={trackForm.reference} onChange={e=>{setTrackForm({...trackForm,reference:e.target.value.toUpperCase()});setTrackedOrder(null)}} placeholder="Order reference (ES-...)"/><input required value={trackForm.phone} onChange={e=>{setTrackForm({...trackForm,phone:e.target.value});setTrackedOrder(null)}} placeholder="Phone number used for order"/><button className="button button-dark" type="submit">Track order <ArrowRight size={15}/></button>{trackedOrder&&<><p className="track-result">{trackedOrder.order.reference}: <strong>{trackedOrder.order.status}</strong> · {formatNaira(trackedOrder.order.total)}</p><div className="order-events">{trackedOrder.events.map((event:any,i:number)=><div key={i}><b>{event.status}</b><small>{new Date(event.createdAt).toLocaleString('en-NG')}{event.note?` · ${event.note}`:''}</small></div>)}</div></>}</form><button className="account-signout" onClick={signOut}><LogOut size={16}/> Sign out</button></>:<><span className="eyebrow">WELCOME TO EAT2SMILE</span><h2>{authMode==='login'?'Good to see you.':'Create your account.'}</h2><p className="account-muted">Sign in to save orders, see order history and track delivery or pickup.</p><form className="auth-form" onSubmit={submitAuth}>{authMode==='register'&&<><label>Full name<input required minLength={2} maxLength={100} value={authForm.name} onChange={e=>setAuthForm({...authForm,name:e.target.value})} autoComplete="name"/></label><label>Phone number<input required type="tel" value={authForm.phone} onChange={e=>setAuthForm({...authForm,phone:e.target.value})} autoComplete="tel"/></label></>}<label>Email address<input required type="email" value={authForm.email} onChange={e=>setAuthForm({...authForm,email:e.target.value})} autoComplete="email"/></label><label>Password<input required type="password" minLength={12} maxLength={128} value={authForm.password} onChange={e=>setAuthForm({...authForm,password:e.target.value})} autoComplete={authMode==='login'?'current-password':'new-password'}/></label>{authMode==='register'&&<small className="account-muted">Use at least 12 characters. Keep your password private.</small>}{authError&&<p className="form-error">{authError}</p>}<button className="button button-orange checkout-button" disabled={authBusy}>{authBusy?'Please wait…':authMode==='login'?'Sign in':'Create account'}</button></form><button className="auth-switch" onClick={()=>{setAuthMode(authMode==='login'?'register':'login');setAuthError('')}}>{authMode==='login'?"New to Eat2Smile? Create an account":"Already have an account? Sign in"}</button><form className="track-form" onSubmit={trackOrder}><h3>Already have an order? Track it</h3><input required value={trackForm.reference} onChange={e=>{setTrackForm({...trackForm,reference:e.target.value.toUpperCase()});setTrackedOrder(null)}} placeholder="Order reference (ES-...)"/><input required value={trackForm.phone} onChange={e=>{setTrackForm({...trackForm,phone:e.target.value});setTrackedOrder(null)}} placeholder="Phone number used for order"/><button className="button button-dark" type="submit">Track order <ArrowRight size={15}/></button>{trackedOrder&&<><p className="track-result">{trackedOrder.order.reference}: <strong>{trackedOrder.order.status}</strong> · {formatNaira(trackedOrder.order.total)}</p><div className="order-events">{trackedOrder.events.map((event:any,i:number)=><div key={i}><b>{event.status}</b><small>{new Date(event.createdAt).toLocaleString('en-NG')}{event.note?` · ${event.note}`:''}</small></div>)}</div></>}</form></>}</section></div>}
+    {orderDetail&&<div className="modal-backdrop account-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setOrderDetail(null)}}><section className="account-modal"><button className="modal-close" onClick={()=>setOrderDetail(null)} aria-label="Close order"><X/></button><span className="eyebrow">ORDER DETAILS</span><h2>{orderDetail.order.reference}</h2><p className="order-status-pill">{orderDetail.order.status}</p><div className="order-detail-lines">{orderDetail.items.map((line:any,i:number)=><div key={i}><span>{line.name} × {line.quantity}</span><b>{formatNaira(line.lineTotal)}</b></div>)}</div><div className="preview-subtotal"><span>Total</span><strong>{formatNaira(orderDetail.order.total)}</strong></div><h3>Progress</h3><div className="order-events">{orderDetail.events.map((event:any,i:number)=><div key={i}><b>{event.status}</b><small>{new Date(event.createdAt).toLocaleString('en-NG')}{event.note?` · ${event.note}`:''}</small></div>)}</div><button className="button button-orange checkout-button" onClick={()=>repeatOrder(orderDetail)}>Order again <ArrowRight size={16}/></button></section></div>}
+    {orderSuccess&&<div className="modal-backdrop account-backdrop"><section className="account-modal order-success"><span className="success-check"><Check size={28}/></span><span className="eyebrow">ORDER RECEIVED</span><h2>Your order is <em>in.</em></h2><p>We have securely saved your order. Keep this reference to track its progress.</p><div className="success-reference">{orderSuccess.reference}<small>Status: {orderSuccess.status}</small><small>Saved order total: {formatNaira(orderSuccess.total)}</small></div><button className="button button-orange checkout-button" onClick={()=>{setOrderSuccess(null);setAccountOpen(true);loadOrders().catch(()=>{})}}>View my orders</button><button className="auth-switch" onClick={()=>setOrderSuccess(null)}>Continue browsing</button></section></div>}
+    {checkoutOpen&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckoutOpen(false)}}><div className="checkout-modal"><button className="modal-close" onClick={()=>setCheckoutOpen(false)} aria-label="Close"><X/></button><span className="eyebrow">ALMOST THERE</span><h2>Let's make it <em>delicious.</em></h2><p className="checkout-intro">Your order is securely saved to your account. Sign in is required so you can follow its progress.</p><div className="checkout-total"><span>{count} item(s)</span><strong>{formatNaira(subtotal)}</strong></div><div className="checkout-order-preview"><b>YOUR ORDER SUMMARY</b>{cart.map(item=><div key={item.product.id}><span>{item.product.name} × {item.quantity}</span><strong>{formatNaira(item.product.price * item.quantity)}</strong></div>)}<div className="preview-subtotal"><span>Subtotal</span><strong>{formatNaira(subtotal)}</strong></div></div><div className="order-type"><button disabled={submittingOrder} className={orderType==='Delivery'?'selected':''} onClick={()=>{setOrderType('Delivery');rotateOrderAttempt()}}><Truck size={18}/> Delivery</button><button disabled={submittingOrder} className={orderType==='Pickup'?'selected':''} onClick={()=>{setOrderType('Pickup');rotateOrderAttempt()}}><ShoppingBag size={18}/> Pickup</button></div><label>Your name<input value={customer.name} disabled={submittingOrder} onChange={e=>updateCheckoutCustomer('name',e.target.value)} placeholder="e.g. Alex Okafor"/></label><label>Phone number<input value={customer.phone} disabled={submittingOrder} onChange={e=>updateCheckoutCustomer('phone',e.target.value)} placeholder="Your active phone number" type="tel"/></label>{orderType==='Delivery'&&<label>Delivery address<textarea rows={2} value={customer.address} disabled={submittingOrder} onChange={e=>updateCheckoutCustomer('address',e.target.value)} placeholder="House number, street, area, city"/></label>}<label>Special instructions (optional)<textarea rows={2} value={customer.instructions} disabled={submittingOrder} onChange={e=>updateCheckoutCustomer('instructions',e.target.value)} placeholder="Landmark, preferred contact, food notes..."/></label>{formError&&<p className="form-error">{formError}</p>}<button className="button button-orange checkout-button" disabled={submittingOrder} onClick={submitOrder}>{submittingOrder?'Saving your order…':'Place order securely'} <ArrowRight size={17}/></button><div className="order-tools"><button className="copy-order" onClick={copyOrder}>{copied?<><Check size={15}/> Summary copied</>: 'Copy order text'}</button><button className="copy-order" onClick={downloadOrderImage}><Download size={14}/> Download image</button><button className="copy-order" onClick={printOrderPdf}><Printer size={14}/> Save as PDF</button></div><small className="checkout-disclaimer">Your order is saved when the confirmation appears. The restaurant will confirm availability, delivery fee and payment instructions. No payment is collected on this website.</small></div></div>}
   </div>
 }
 export default App

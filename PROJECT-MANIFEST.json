@@ -1,12 +1,15 @@
 {
   "project": "Eat2smile",
-  "version": "1.5.0",
+  "version": "1.7.1",
   "stack": [
     "React 18",
     "TypeScript",
     "Vite",
     "GSAP",
-    "ScrollTrigger"
+    "ScrollTrigger",
+    "Cloudflare Pages Functions",
+    "Cloudflare D1",
+    "ImageKit"
   ],
   "upgrade": [
     "cinematic staged hero entrance",
@@ -20,23 +23,43 @@
     "swipeable four-slide Unsplash hero gallery with touch navigation, arrow controls and position dots",
     "removed fake scroll progress and 01/04 placeholder strip",
     "removed illustrated SVG food fallback; failed product photos now fall back to category-matched Unsplash photography",
-    "removed explanatory warning paragraph beneath Drop Us a Note heading"
+    "removed explanatory warning paragraph beneath Drop Us a Note heading",
+    "add-to-cart snackbar with item name, View Cart action and three-second auto-dismiss",
+    "scroll-triggered floating cart with live item quantity and subtotal, entrance bounce and mobile safe-area positioning",
+    "five-colour automatic accent rotation at six-second intervals with smooth CSS colour interpolation and readable foreground contrast",
+    "per-product favourite toggle with persistent localStorage state and visible personal like indicator",
+    "Favourites menu filter with saved-item count and empty state",
+    "favourite toggle available from the product quick-view modal",
+    "reduced-motion support for new cart and favourite animations",
+    "same-origin Pages Functions API under /api/*",
+    "D1 relational schema and two migrations with 26 seeded menu items",
+    "PBKDF2 customer registration/login and secure opaque server-side sessions",
+    "customer profile and account endpoints",
+    "protected staff role mapping and bootstrap flow",
+    "ImageKit server-side menu image upload with file validation and D1 URL persistence",
+    "database-backed order submission with server-side price calculation",
+    "unique cryptographically random order references",
+    "customer order history, details, status events and Order Again",
+    "public order tracking protected by reference plus phone suffix and rate limiting",
+    "per-customer checkout idempotency key to prevent duplicate orders on repeat requests"
   ],
   "image_strategy": "All food photography is sourced from Unsplash remote image URLs and requires internet access. If an individual menu photo fails, its image element switches to a category-matched Unsplash photo; no illustrated food fallback is included.",
-  "testing_status": "Source reviewed and updated. ZIP integrity verified after packaging. A complete dependency install, TypeScript production build and live mobile browser test have not been run in this environment.",
-  "notes": "Real contact routes, guided hero navigation, 24/7 availability, functional email composer and WhatsApp checkout handoff, rotating snack quotes.",
+  "testing_status": "Both SQL migrations passed local SQLite execution and data-flow checks. Backend TypeScript semantic check passed; all 22 TS/TSX files passed syntax transpilation. npm ci timed out in this environment, so full npm run build, browser testing and live Cloudflare deployment remain unverified.",
+  "notes": "Real contact routes, guided hero navigation, 24/7 availability, functional email composer and WhatsApp contact shortcut. Phases 1\u20134 are implemented in source: interactive UI, local favourites, Cloudflare Pages Functions, D1, ImageKit and database-backed customer orders. The existing WhatsApp shortcut remains for contact/questions, not as the order submission mechanism. Production setup and full build/browser verification are still pending.",
   "changes": [
     "Checkout now displays a live itemised order summary",
     "Copy order text action",
     "Download order summary as PNG image",
     "Print dialog for saving order summary as PDF",
-    "WhatsApp checkout directly navigates to Eat2smile chat with prefilled order details",
-    "Added floating Instagram shortcut alongside WhatsApp"
+    "Added floating Instagram shortcut alongside WhatsApp",
+    "Checkout submits orders to the database after customer authentication; WhatsApp is no longer represented as a database order submission"
   ],
   "updates": [
     "Direct Reach us through email link in Drop Us a Note",
     "Conditional green email handoff confirmation",
     "Animated directional transitions for all four hero food slides",
     "Reduced-motion accessibility retained"
-  ]
+  ],
+  "technologies": [],
+  "features": []
 }

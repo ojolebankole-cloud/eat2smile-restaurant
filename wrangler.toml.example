@@ -1,0 +1,16 @@
+name = "eat2smile-restaurant"
+compatibility_date = "2026-11-15"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "eat2smile-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+APP_ORIGIN = "https://eat2smile-restaurant.pages.dev"
+SESSION_DAYS = "14"
+MAX_UPLOAD_BYTES = "5242880"
+IMAGEKIT_PUBLIC_KEY = "public_fArg5vl4jRP3lgpSycmUs7s82gU="
+IMAGEKIT_URL_ENDPOINT = "https://ik.imagekit.io/8bgfokfr5"

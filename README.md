@@ -35,7 +35,7 @@ Open `http://localhost:5173` in your phone browser. Keep Termux running while te
 ## Important operational notes
 - The contact form uses a `mailto:` handoff. It opens the visitor’s configured email app with the message addressed to Eat2smile. It does not silently send email; the visitor must press Send. A server-side form service would be needed for direct website submission.
 - Checkout opens WhatsApp with the order details. The visitor must press Send, and the order is not confirmed until Eat2smile replies. No payment is taken by the website. Delivery fees, item availability, preparation time and payment instructions are confirmed by the restaurant.
-- Food photography uses remote Unsplash images and requires internet access. Failed images use the bundled fallback illustration.
+- Food photography uses remote Unsplash images and requires internet access. Failed menu images use category-matched Unsplash photography.
 - No street address or delivery fee has been invented.
 
 ## Verification
@@ -65,3 +65,53 @@ No order is sent to a server, and no payment is processed by this frontend. Deli
 - The green confirmation note remains conditional and appears only after the visitor submits the note form using “Open email to send”.
 - Added directional image transitions, circular reveal, soft blur-to-sharp entrance, caption stagger, halo accent and responsive controls to the four-slide hero gallery.
 - Respects `prefers-reduced-motion`.
+
+
+## Version 1.6.0 — Phase 1 and Phase 2
+
+### Phase 1: Website interactive enhancements
+- Adding a menu item displays a snackbar with the item name, a **View Cart** action and a three-second auto-dismiss. A new add replaces the previous snackbar timer rather than stacking notifications.
+- A floating cart appears after the visitor scrolls down, with the current item quantity and live subtotal. It opens the existing cart drawer and respects mobile safe-area spacing.
+- The main accent colour rotates through Tomato Red (`#E63946`), Mango Orange (`#FF8C00`), the original Eat2Smile orange (`#ff6b00`), Golden Yellow (`#FFC300`) and Chocolate Brown (`#6F1D1D`) every six seconds. The colour transition is smooth; foreground contrast is adjusted for the yellow interval.
+
+### Phase 2: Food likes and favourites
+- Each food card has a heart toggle and a personal saved-state indicator. The product quick-view also has a favourite toggle.
+- The menu includes a **Favourites** filter and a live count of saved meals. Removing the last saved meal shows a helpful empty state.
+- Favourites persist in this browser using `localStorage`, just like the existing cart. They do not synchronise across devices and the displayed 0/1 indicator is the current visitor's own saved state, not a public/global like count. Global popularity counts require a backend and database and are intentionally not simulated in this frontend-only phase.
+
+### Verification status
+- TSX/TypeScript syntax transpilation passed with the available global TypeScript compiler.
+- `npm ci` could not finish because requests to `registry.npmjs.org` failed with `EAI_AGAIN` in this environment. Therefore the full TypeScript project build, production bundle and live browser interaction test remain **unverified**.
+- Before deployment, run `npm ci` and `npm run build` in an internet-connected environment, then manually test the snackbar timer, cart totals, scroll visibility, colour rotation, favourites persistence and mobile layout.
+
+No backend, database, payment flow or server-side data collection was added. Existing WhatsApp checkout and the existing website design/content have been retained.
+
+## Version 1.7.0 — Phase 3 and Phase 4 backend
+
+The existing Cloudflare Pages site remains the frontend. This version adds same-origin Cloudflare Pages Functions (`/api/*`), D1 migrations and seeded menu data, ImageKit image upload integration, customer registration/login/session/profile APIs, protected staff menu/customer/order APIs, and database-backed checkout, order references, order history, order details, tracking and Order Again.
+
+### Cloudflare resources required before launch
+
+- D1 database: `eat2smile-db` (apply `migrations/0001_initial.sql` and `migrations/0002_seed_menu.sql` through Wrangler migrations).
+- ImageKit account with a URL endpoint, public key and private key.
+- Pages binding: `DB` → D1 database. No R2 binding is required.
+- Pages variable: `APP_ORIGIN` set to the exact live site origin.
+- Pages secret: `ADMIN_BOOTSTRAP_KEY`, used once to grant the first staff role and then rotated/removed.
+- Use the `wrangler.toml.example` only after merging it with the existing Pages project configuration and inserting the real D1 database ID. Never commit secrets.
+
+Read `docs/PHASE-3-4-OPERATIONS.md` for deployment steps, API routes, role setup, security boundaries and operational rules.
+
+### Checkout and operational rules
+
+- Customers must sign in to submit an order. The backend recalculates item prices and totals from D1; browser totals are display-only.
+- Successful submission saves an order and returns a server-generated reference. The order begins as `New` and is not considered accepted until restaurant staff changes its status.
+- Delivery fee is not configured; no fee is invented. The restaurant confirms it. No payment is processed online.
+- Order tracking reports restaurant status updates, not live GPS tracking.
+
+### Authentication limitation
+
+Password registration/login and secure sessions are implemented. Email verification and password-reset email are not enabled because no email sender/provider has been selected. Email addresses are therefore not verified, and users who forget passwords currently need an operator-assisted recovery process.
+
+### Verification status
+
+SQLite migrations and data-flow checks passed; backend TypeScript semantic checking and TS/TSX syntax transpilation passed. The package installation timed out in this environment, so the full `npm run build`, live browser tests and live Cloudflare deployment remain unverified. Do not deploy until the real D1 binding and secrets are configured.
