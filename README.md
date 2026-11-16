@@ -84,11 +84,11 @@ No order is sent to a server, and no payment is processed by this frontend. Deli
 - `npm ci` could not finish because requests to `registry.npmjs.org` failed with `EAI_AGAIN` in this environment. Therefore the full TypeScript project build, production bundle and live browser interaction test remain **unverified**.
 - Before deployment, run `npm ci` and `npm run build` in an internet-connected environment, then manually test the snackbar timer, cart totals, scroll visibility, colour rotation, favourites persistence and mobile layout.
 
-No backend, database, payment flow or server-side data collection was added. Existing WhatsApp checkout and the existing website design/content have been retained.
+**Historical v1.6 note:** No backend/database was added in that earlier UI-only phase. v1.7 later introduced D1 and APIs; v1.8 now replaces customer checkout authentication with guest orders.
 
-## Version 1.7.0 — Phase 3 and Phase 4 backend
+## Version 1.7.0 — Phase 3 and Phase 4 backend (historical; superseded by v1.8.0)
 
-The existing Cloudflare Pages site remains the frontend. This version adds same-origin Cloudflare Pages Functions (`/api/*`), D1 migrations and seeded menu data, ImageKit image upload integration, customer registration/login/session/profile APIs, protected staff menu/customer/order APIs, and database-backed checkout, order references, order history, order details, tracking and Order Again.
+The v1.7 implementation added same-origin Cloudflare Pages Functions (`/api/*`), D1 migrations and seeded menu data, ImageKit image upload integration, customer registration/login/session/profile APIs, protected staff menu/customer/order APIs, and database-backed checkout. The customer-authentication part was retired in v1.8.0; the historical details below are superseded by the v1.8 section.
 
 ### Cloudflare resources required before launch
 
@@ -103,15 +103,52 @@ Read `docs/PHASE-3-4-OPERATIONS.md` for deployment steps, API routes, role setup
 
 ### Checkout and operational rules
 
-- Customers must sign in to submit an order. The backend recalculates item prices and totals from D1; browser totals are display-only.
+- **Historical v1.7 behaviour only:** customer sign-in was required. This was replaced in v1.8.0 by guest checkout; see the Phase 1–3 section below.
 - Successful submission saves an order and returns a server-generated reference. The order begins as `New` and is not considered accepted until restaurant staff changes its status.
 - Delivery fee is not configured; no fee is invented. The restaurant confirms it. No payment is processed online.
 - Order tracking reports restaurant status updates, not live GPS tracking.
 
 ### Authentication limitation
 
-Password registration/login and secure sessions are implemented. Email verification and password-reset email are not enabled because no email sender/provider has been selected. Email addresses are therefore not verified, and users who forget passwords currently need an operator-assisted recovery process.
+The v1.7 customer registration/login implementation is retired in v1.8.0. Staff use the separate administrator authentication system; customers order as guests.
 
 ### Verification status
 
 SQLite migrations and data-flow checks passed; backend TypeScript semantic checking and TS/TSX syntax transpilation passed. The package installation timed out in this environment, so the full `npm run build`, live browser tests and live Cloudflare deployment remain unverified. Do not deploy until the real D1 binding and secrets are configured.
+
+## Version 1.8.0 — Foundation, guest ordering and multi-page website
+
+### Phase 1 — Foundation verification
+- Preserved the supplied v1.7.1 source in a separate untouched backup before editing.
+- Verified the React/Vite/TypeScript + Cloudflare Pages Functions + D1 + ImageKit architecture and both existing migrations.
+- Added a third additive D1 migration. It does not drop or rewrite existing customer/order rows.
+- The complete production build could not be run because `npm ci` could not download packages from `registry.npmjs.org` (`EAI_AGAIN`). Backend semantic checks, source syntax transpilation and SQLite migration checks were completed instead.
+- No live Cloudflare account, D1 binding, secret or deployment can be verified from this archive-only environment.
+
+### Phase 2 — Guest-first ordering
+- Customer registration, login, logout and profile endpoints are retired; customer-facing sign-in/registration UI has been removed.
+- Checkout accepts guest name, full phone number, delivery/pickup choice and delivery address where required. Prices and totals are still recalculated from D1 on the server.
+- Each new guest order receives a client-generated 256-bit private access token. Only its SHA-256 digest is stored in D1. The token is stored in the current browser's local storage after successful checkout.
+- Guest order history and details are available on that browser. A customer can recover an individual order on another device with the order reference and full phone number; recovery is rate-limited and issues a fresh private access token.
+- Existing customer/order rows are retained. Older orders can be recovered one at a time; no existing order rows are deleted.
+- A separate administrator authentication system uses `admin_users`, `admin_sessions`, a Secure/HttpOnly cookie, PBKDF2 password hashing and a one-time bootstrap secret. The `/admin` page provides sign-in and recent order status management.
+
+### Phase 3 — Individual website pages
+- Added separate crawlable HTML entry points for `/`, `/menu`, `/order`, `/about`, `/find-us`, `/contact`, `/orders` and `/admin`.
+- The public navigation now links to Home, Menu, Order, About Us, Find Us and Contact. Customer sign-in and registration are absent.
+- Added route-specific titles, descriptions, canonical URLs, Open Graph metadata and page indexing rules. Order History and Admin are noindex; the sitemap lists only public marketing/menu/order pages.
+- Added WebSite and Restaurant structured data with the Abuja/FCT/NG locality, project contact details and opening-hours information already present in the source.
+- Added a favicon mark. It is a provisional site icon, not a supplied official Eat2Smile logo.
+
+### Remaining external setup / limitations
+- The source contains Abuja, Nigeria but no exact street address or verified Google Maps pin. The Find Us page does not invent one; it links to a general Abuja map search. Supply the actual address/pin before publishing a precise directions page or claiming a verified storefront location.
+- The ZIP did not include an official logo or original social-share artwork. The favicon is provisional; replace it with the approved brand assets when provided.
+- No online payment gateway is configured. Checkout records orders only; the restaurant confirms payment and any delivery fee separately. Do not advertise online payment until a provider and credentials are configured.
+- The Cloudflare D1 database ID is still a placeholder in `wrangler.toml.example`. Apply migration `0003_guest_orders_admin_auth.sql` to the intended D1 database before deploying the new code.
+- Configure `ADMIN_BOOTSTRAP_KEY` as a Cloudflare secret, then bootstrap the first admin using the documented endpoint. Remove/rotate the bootstrap secret immediately after successful setup.
+- The actual Cloudflare Pages deployment, D1 bindings, ImageKit secrets, production browser testing and live Google indexing were not performed here.
+
+
+## Phase 3 — Payments
+
+Checkout offers Flutterwave hosted online payment and WhatsApp-coordinated direct payment. See `docs/PHASE-3-PAYMENTS-IMPLEMENTATION-REPORT.md` for the data model, security flow, account setup and required pre-production tests. Configure `FLW_SECRET_KEY` and `FLW_SECRET_HASH` as encrypted Cloudflare Pages secrets; never place them in frontend code or committed variables. Apply migration `0006_flutterwave_payments.sql` to the intended D1 database only after backup and confirmation. The Flutterwave webhook endpoint is `/api/payments/flutterwave/webhook`.

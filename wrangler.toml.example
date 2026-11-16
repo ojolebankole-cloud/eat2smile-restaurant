@@ -11,6 +11,9 @@ migrations_dir = "migrations"
 [vars]
 APP_ORIGIN = "https://eat2smile-restaurant.pages.dev"
 SESSION_DAYS = "14"
+# Set FLW_SECRET_KEY and FLW_SECRET_HASH as encrypted Cloudflare Pages secrets, not vars.
+# Flutterwave webhook URL: https://<your-domain>/api/payments/flutterwave/webhook
+ADMIN_SESSION_DAYS = "7"
 MAX_UPLOAD_BYTES = "5242880"
 IMAGEKIT_PUBLIC_KEY = "public_fArg5vl4jRP3lgpSycmUs7s82gU="
 IMAGEKIT_URL_ENDPOINT = "https://ik.imagekit.io/8bgfokfr5"

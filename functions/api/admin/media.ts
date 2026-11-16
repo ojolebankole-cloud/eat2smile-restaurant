@@ -1,4 +1,4 @@
-import { currentCustomer, fail, json, sameOrigin, type PagesContext } from '../../_shared'
+import { auditAdmin, currentAdmin, digest, fail, json, limited, sameOrigin, type PagesContext } from '../../_shared'
 
 const MIME_EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'avif' }
 function hasValidSignature(bytes: Uint8Array, mime: string): boolean {
@@ -15,9 +15,10 @@ function safeFileName(name: string, ext: string) {
 
 export const onRequestPost = async ({ request, env }: PagesContext) => {
   if (!sameOrigin(request, env)) return fail('Request origin rejected.', 403)
-  const customer = await currentCustomer(request, env)
-  if (!customer) return fail('Sign in required.', 401)
-  const staff = await env.DB.prepare("SELECT role FROM staff_users WHERE email=? AND role IN ('admin','manager') AND is_active=1").bind(customer.email).first<{role:string}>()
+  const customer = await currentAdmin(request, env)
+  if (!customer) return fail('Administrator sign-in required.', 401)
+  const ip=request.headers.get('cf-connecting-ip')||'unknown';if(!await limited(env,`admin-upload:${await digest(ip)}`,12))return fail('Too many uploads. Please wait before trying again.',429)
+  const staff = await env.DB.prepare("SELECT role FROM admin_users WHERE email=? AND role IN ('admin','manager') AND is_active=1").bind(customer.email).first<{role:string}>()
   if (!staff) return fail('Manager permission required.', 403)
   if (!env.IMAGEKIT_PRIVATE_KEY || !env.IMAGEKIT_PUBLIC_KEY || !env.IMAGEKIT_URL_ENDPOINT) return fail('Image storage is not configured. Contact the site administrator.', 503)
 
@@ -65,5 +66,6 @@ export const onRequestPost = async ({ request, env }: PagesContext) => {
   try {
     await env.DB.prepare("UPDATE menu_items SET image_url=?, updated_at=datetime('now') WHERE id=?").bind(imageData.url, menuItemId).run()
   } catch { return fail('The image uploaded, but its menu record could not be updated. Retry after checking the menu item.', 500) }
+  await auditAdmin(request,env,customer,'menu_image_uploaded','menu_item',menuItemId,{fileId:imageData.fileId,mime:file.type,size:file.size})
   return json({ ok: true, menuItemId, fileId: imageData.fileId, filePath: imageData.filePath, url: imageData.url }, 201)
 }

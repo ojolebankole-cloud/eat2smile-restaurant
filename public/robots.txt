@@ -1,4 +1,7 @@
+# Public restaurant pages are crawlable. Private HTML routes publish noindex
+# directives in both their HTML and HTTP response headers.
 User-agent: *
 Allow: /
+Disallow: /api/
 
 Sitemap: https://eat2smile-restaurant.pages.dev/sitemap.xml

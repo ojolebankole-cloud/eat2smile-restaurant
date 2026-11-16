@@ -7,3 +7,6 @@ dist
 .wrangler
 .DS_Store
 *.tsbuildinfo
+
+# Temporary admin URL patch backups
+.admin-url-patch-backup/

@@ -1,0 +1,2 @@
+import { json,type PagesContext } from '../../_shared'
+export const onRequestGet=async({env}:PagesContext)=>{const rows=await env.DB.prepare("SELECT id,title,message,campaign_type AS type,image_url AS image,link_url AS link,starts_at AS startsAt,ends_at AS endsAt FROM marketing_campaigns WHERE active=1 AND (starts_at IS NULL OR datetime(starts_at)<=datetime('now')) AND (ends_at IS NULL OR datetime(ends_at)>=datetime('now')) ORDER BY created_at DESC LIMIT 20").all();return json({campaigns:rows.results})}

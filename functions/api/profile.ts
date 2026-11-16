@@ -1,3 +1,3 @@
-import { bodyJson,currentCustomer,fail,json,normalizePhone,sameOrigin,type PagesContext } from '../_shared'
-export const onRequestGet=async({request,env}:PagesContext)=>{const c=await currentCustomer(request,env);return c?json({customer:{id:c.id,email:c.email,name:c.full_name,phone:c.phone}}):fail('Sign in required.',401)}
-export const onRequestPatch=async({request,env}:PagesContext)=>{if(!sameOrigin(request,env))return fail('Request origin rejected.',403);const c=await currentCustomer(request,env);if(!c)return fail('Sign in required.',401);const b=await bodyJson<{name:string;phone:string}>(request);if(!b)return fail('Invalid request.');const name=String(b.name||'').trim(),phone=normalizePhone(String(b.phone||''));if(name.length<2||name.length>100||!/^\+?[0-9]{10,15}$/.test(phone))return fail('Enter a valid name and phone number.');await env.DB.prepare("UPDATE customers SET full_name=?,phone=?,updated_at=datetime('now') WHERE id=?").bind(name,phone,c.id).run();return json({customer:{...c,name,phone}})}
+import { fail } from '../_shared'
+export const onRequestGet=async()=>fail('Customer profiles have been retired.',410)
+export const onRequestPatch=async()=>fail('Customer profiles have been retired. Enter your details during guest checkout.',410)

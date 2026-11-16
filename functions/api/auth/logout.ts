@@ -1,2 +1,2 @@
-import { clearCookie,digest,fail,getCookie,json,sameOrigin,type PagesContext } from '../../_shared'
-export const onRequestPost=async({request,env}:PagesContext)=>{if(!sameOrigin(request,env))return fail('Request origin rejected.',403);const token=getCookie(request,'__Host-es_session');if(token)await env.DB.prepare('DELETE FROM sessions WHERE id_hash=?').bind(await digest(token)).run();return json({ok:true},200,{'set-cookie':clearCookie})}
+import { fail } from '../../_shared'
+export const onRequestPost=async()=>fail('Customer accounts are no longer used.',410)

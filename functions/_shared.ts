@@ -1,4 +1,4 @@
-export interface Env { DB: D1Database; APP_ORIGIN?: string; SESSION_DAYS?: string; MAX_UPLOAD_BYTES?: string; ADMIN_BOOTSTRAP_KEY?: string; IMAGEKIT_PRIVATE_KEY?: string; IMAGEKIT_PUBLIC_KEY?: string; IMAGEKIT_URL_ENDPOINT?: string; }
+export interface Env { DB: D1Database; APP_ORIGIN?: string; SESSION_DAYS?: string; MAX_UPLOAD_BYTES?: string; ADMIN_BOOTSTRAP_KEY?: string; ADMIN_SESSION_DAYS?: string; IMAGEKIT_PRIVATE_KEY?: string; IMAGEKIT_PUBLIC_KEY?: string; IMAGEKIT_URL_ENDPOINT?: string; FLW_SECRET_KEY?: string; FLW_SECRET_HASH?: string; }
 export interface D1Result<T=Record<string, unknown>> { results:T[]; success:boolean; meta?:unknown }
 export interface D1PreparedStatement { bind(...values:unknown[]):D1PreparedStatement; first<T=Record<string,unknown>>():Promise<T|null>; all<T=Record<string,unknown>>():Promise<D1Result<T>>; run():Promise<unknown> }
 export interface D1Database { prepare(sql:string):D1PreparedStatement; batch<T=unknown>(statements:D1PreparedStatement[]):Promise<T[]> }
@@ -22,3 +22,12 @@ export function validEmail(email:string){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.tes
 export function normalizePhone(phone:string){return phone.replace(/[\s().-]/g,'')}
 export async function limited(env:Env,key:string,max=8){const now=new Date().toISOString();const row=await env.DB.prepare('SELECT attempts,window_started FROM login_attempts WHERE key=?').bind(key).first<{attempts:number;window_started:string}>();if(!row||Date.now()-Date.parse(row.window_started)>15*60*1000){await env.DB.prepare('INSERT INTO login_attempts(key,attempts,window_started) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=1,window_started=excluded.window_started').bind(key,now).run();return true}if(row.attempts>=max)return false;await env.DB.prepare('UPDATE login_attempts SET attempts=attempts+1 WHERE key=?').bind(key).run();return true}
 export const safeCustomer=(c:{id:string;email:string;full_name:string;phone:string})=>({id:c.id,email:c.email,name:c.full_name,phone:c.phone});
+
+export async function currentAdmin(request:Request,env:Env){const token=getCookie(request,'__Host-es_admin');if(!token)return null;const hash=await digest(token);return env.DB.prepare(`SELECT a.id,a.email,a.role FROM admin_sessions s JOIN admin_users a ON a.id=s.admin_id WHERE s.id_hash=? AND julianday(s.expires_at)>julianday('now') AND a.is_active=1`).bind(hash).first<{id:string;email:string;role:string}>()}
+export const adminCookie=(token:string,maxAge:number)=>`__Host-es_admin=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`
+export const clearAdminCookie='__Host-es_admin=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'
+
+export async function auditAdmin(request:Request,env:Env,actor:{id:string;email:string},action:string,entityType:string,entityId:string|null=null,details:Record<string,unknown>={}){
+ const ip=request.headers.get('cf-connecting-ip')||'';const ipHash=ip?await digest(ip):null;
+ await env.DB.prepare('INSERT INTO admin_activity_logs(id,admin_id,admin_email,action,entity_type,entity_id,details_json,ip_hash) VALUES(?,?,?,?,?,?,?,?)').bind(id(),actor.id,actor.email,action,entityType,entityId,JSON.stringify(details).slice(0,4000),ipHash).run();
+}

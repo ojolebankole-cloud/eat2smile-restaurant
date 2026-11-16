@@ -1,3 +1,5 @@
+> **Historical report:** This documents v1.7.0 only. Its customer sign-in architecture is superseded by the v1.8.0 Phase 1–3 implementation in `PHASE-1-3-IMPLEMENTATION-REPORT.md` and current deployment instructions in `docs/PHASE-3-4-OPERATIONS.md`.
+
 # Eat2Smile v1.7.0 — Phase 3 & Phase 4 Implementation Report
 
 ## Scope delivered

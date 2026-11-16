@@ -3,7 +3,7 @@ export type Product = {
   image: string; tag?: string;
 }
 
-const photo = (id: string, w=900) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=85`
+const photo = (id: string, w=800) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=80`
 
 export const products: Product[] = [
   { id:'beef-burger', name:'Classic Beef Burger', category:'Burgers', price:5500, description:'Juicy grilled beef patty, fresh lettuce, tomatoes, cheese and signature sauce.', image:photo('photo-1568901346375-23c9450c58cd'), tag:'Bestseller' },

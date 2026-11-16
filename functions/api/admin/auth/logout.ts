@@ -1,0 +1,2 @@
+import { clearAdminCookie,digest,fail,getCookie,json,sameOrigin,type PagesContext } from '../../../_shared'
+export const onRequestPost=async({request,env}:PagesContext)=>{if(!sameOrigin(request,env))return fail('Request origin rejected.',403);const token=getCookie(request,'__Host-es_admin');if(token)await env.DB.prepare('DELETE FROM admin_sessions WHERE id_hash=?').bind(await digest(token)).run();return json({ok:true},200,{'set-cookie':clearAdminCookie})}
