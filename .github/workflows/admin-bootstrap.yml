@@ -15,4 +15,4 @@ jobs:
           ADMIN_BOOTSTRAP_KEY: ${{ secrets.ADMIN_BOOTSTRAP_KEY }}
         run: |
           jq -n --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" '{email:$email,password:$password}' > payload.json
-          curl --fail-with-body --silent --show-error -X POST "https://eat2smile-restaurant.pages.dev/api/admin/auth/bootstrap" -H "Content-Type: application/json" -H "x-admin-bootstrap-key: $ADMIN_BOOTSTRAP_KEY" --data-binary @payload.json
+          curl --fail-with-body --silent --show-error -X POST "https://eat2smile-restaurant.pages.dev/api/admin/auth/bootstrap" -H "Origin: https://eat2smile-restaurant.pages.dev" -H "Content-Type: application/json" -H "x-admin-bootstrap-key: $ADMIN_BOOTSTRAP_KEY" --data-binary @payload.json
