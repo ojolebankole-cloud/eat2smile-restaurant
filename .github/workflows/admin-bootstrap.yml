@@ -1,15 +1,18 @@
 name: Eat2Smile First Admin Setup
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-bootstrap:
-runs-on: ubuntu-latest
-steps:
-- name: Create first administrator
-env:
-ADMIN_EMAIL: ojolebankole@gmail.com
-ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-ADMIN_BOOTSTRAP_KEY: ${{ secrets.ADMIN_BOOTSTRAP_KEY }}
-run: 'curl --fail-with-body --silent --show-error -X POST "https://eat2smile-restaurant.pages.dev/api/admin/auth/bootstrap" -H "Content-Type: application/json" -H "x-admin-bootstrap-key: $ADMIN_BOOTSTRAP_KEY" --data-binary "$(jq -n --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" "{email:$email,password:$password}")"'
+  bootstrap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create first administrator
+        env:
+          ADMIN_EMAIL: ojolebankole@gmail.com
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_BOOTSTRAP_KEY: ${{ secrets.ADMIN_BOOTSTRAP_KEY }}
+        run: |
+          jq -n --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" '{email:$email,password:$password}' > payload.json
+          curl --fail-with-body --silent --show-error -X POST "https://eat2smile-restaurant.pages.dev/api/admin/auth/bootstrap" -H "Content-Type: application/json" -H "x-admin-bootstrap-key: $ADMIN_BOOTSTRAP_KEY" --data-binary @payload.json
